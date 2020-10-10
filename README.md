@@ -19,4 +19,5 @@ I planned to analyse information on wikibedia to find more meaningful frequent w
 ##Related files
 
 The output html file is [here](https://ghcdn.rawgit.org/MingzhiYe16/PM566_midterm/master/midterm/midterm.html)
+
 The source code file is [here](https://ghcdn.rawgit.org/MingzhiYe16/PM566_midterm/master/midterm/midterm.Rmd)
