@@ -1,6 +1,9 @@
 ## About the raw data
 
-All the raw data was extracted from the website through GET
+All the raw data was extracted from the website through GET。
+
+The data of concentrations of pollutants is from [EPA](https://aqs.epa.gov).
+The data of abstracts of papers about the pollutants is from [NCBI](https://www.ncbi.nlm.nih.gov)
 
 ##Brief of objectives
 
