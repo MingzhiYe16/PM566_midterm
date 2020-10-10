@@ -1,0 +1,364 @@
+---
+title: "PM566lab3"
+author: "Mingzhi Ye"
+date: "10/7/2020"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r,include=FALSE}
+library(data.table)
+library(leaflet)
+library(tidyverse)
+library(lubridate)
+library(httr)
+library(data.table)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidytext)
+```
+##Brief
+
+In this research, I checked the influence of wildfires on the concentration of air pollutant, including SO2 and CO, which are the main pollutants produced by wildfire. There was a great wildfire happened in 2018 from 11.08 to 11.25. So I collect the data of the concentration of air pollutant in 2018 from 11.08 to 11.25 and the data on the same date from 2013 to 2017 to check whether the concentration increased significantly because of the wildfire and how muuch it changed.
+
+I also checked the frequent words in the abstracts of the papers about SO2 and CO to find the clues of related diseases and other things.
+
+##Influence of wildfires on air pollutants
+#Extract the data
+
+I used GET to obtain the data from US EPA's website, and transfer the raw data to a data.table.
+```{r}
+afterfire <- GET(
+  "https://aqs.epa.gov/data/api/qaOnePointQcRawData/byState?email=test@aqs.api&key=test&param=42401,42101&bdate=20181108&edate=20181125&state=06")
+
+beforefire2017 <- GET(
+  "https://aqs.epa.gov/data/api/qaOnePointQcRawData/byState?email=test@aqs.api&key=test&param=42401,42101&bdate=20171108&edate=20171125&state=06")
+beforefire2016 <- GET(
+  "https://aqs.epa.gov/data/api/qaOnePointQcRawData/byState?email=test@aqs.api&key=test&param=42401,42101&bdate=20161108&edate=20161125&state=06")
+beforefire2015 <- GET(
+  "https://aqs.epa.gov/data/api/qaOnePointQcRawData/byState?email=test@aqs.api&key=test&param=42401,42101&bdate=20151108&edate=20151125&state=06")
+beforefire2014 <- GET(
+  "https://aqs.epa.gov/data/api/qaOnePointQcRawData/byState?email=test@aqs.api&key=test&param=42401,42101&bdate=20141108&edate=20141125&state=06")
+beforefire2013 <- GET(
+  "https://aqs.epa.gov/data/api/qaOnePointQcRawData/byState?email=test@aqs.api&key=test&param=42401,42101&bdate=20131108&edate=20131125&state=06")
+afterfire <- httr::content(afterfire)
+
+beforefire2013 <- httr::content(beforefire2013)
+beforefire2014 <- httr::content(beforefire2014)
+beforefire2015 <- httr::content(beforefire2015)
+beforefire2016 <- httr::content(beforefire2016)
+beforefire2017 <- httr::content(beforefire2017)
+
+afterfire<-afterfire$Data
+afterfire <- rbindlist(afterfire)
+#This is very important to transfer NULL to NA, it takes me lots of time to fix it.
+dtafter <-data.table(afterfire)
+
+beforefire2013<-beforefire2013$Data
+beforefire2013 <- rbindlist(beforefire2013)
+dtbeforefire2013 <-data.table(beforefire2013)
+
+beforefire2014<-beforefire2014$Data
+beforefire2014 <- rbindlist(beforefire2014)
+dtbeforefire2014 <-data.table(beforefire2014)
+
+beforefire2015<-beforefire2015$Data
+beforefire2015 <- rbindlist(beforefire2015)
+dtbeforefire2015 <-data.table(beforefire2015)
+
+beforefire2016<-beforefire2016$Data
+beforefire2016 <- rbindlist(beforefire2016)
+dtbeforefire2016 <-data.table(beforefire2016)
+
+beforefire2017<-beforefire2017$Data
+beforefire2017 <- rbindlist(beforefire2017)
+dtbeforefire2017 <-data.table(beforefire2017)
+
+
+data1<-rbind(dtbeforefire2013,dtafter)
+data1<-rbind(dtbeforefire2014,data1)
+data1<-rbind(dtbeforefire2015,data1)
+data1<-rbind(dtbeforefire2016,data1)
+data1<-rbind(dtbeforefire2017,data1)
+
+```
+
+#Check and modify the data
+
+It is weird that the response from the website also contain data about the concentration about ozone. Even though I didn't request about it. The data of latitude, longitude and concentration of Sulfur dioxide is fine, but the data of concentration of Carbon monoxide had some problem because the max value is extremely big.
+
+When I checked the top100 values of concentration of Carbon monoxide, I found that there are a cluster of values that is greater than 400 when the median is only 2.200 and mean is 36.302, I also displayed the date and location of that values happened, they are diverse in location  and date and most of them are in 2018. So it's probable that the data is right and perhaps it was the wildfire in 2018 november that made the concentration of Carbon monoxide significantly higher than normal.
+
+I also create a character variable "year" to describe the year when the data was collected and a Date variable "Date" to describe the month and day when the data was collected
+```{r}
+table(data1$parameter)
+
+summary(data1$latitude)
+summary(data1$longitude)
+
+data_s<-data1[parameter=="Sulfur dioxide"]
+summary(data_s$monitor_concentration)
+data_c<-data1[parameter=="Carbon monoxide"]
+summary(data_c$monitor_concentration)
+
+head(data_c[,sort(-monitor_concentration)],100)
+data_a<-head(data_c[order(-monitor_concentration)],100)
+data_a[,.(county,site_address,select_date,monitor_concentration)]
+
+
+```
+
+```{r}
+data_c<-data_c[,year:=substr(select_date,1,4)]
+data_s<-data_s[,year:=substr(select_date,1,4)]
+
+data_c<-data_c[year=="2013"|year=="2014"|year=="2015"|year=="2016"|year=="2017",year:="Previous years"]
+data_s<-data_s[year=="2013"|year=="2014"|year=="2015"|year=="2016"|year=="2017",year:="Previous years"]
+
+data_c<-data_c[,date:=ymd(select_date)]
+data_s<-data_s[,date:=ymd(select_date)]
+
+data_c<-data_c[,Date:=substr(select_date,6,10)]
+data_s<-data_s[,Date:=substr(select_date,6,10)]
+```
+
+#Evaluate the change in SO2
+
+We use box-plot and line chart to check whether the concentration of SO2 in 2018 increased from Previous years. We find that the concentration actually significantly decreased. On most days during the fire the concentration decreased.
+
+Then we check how many times did the average concentration in every county increase. We find that the concentration in counties that is on the north almost didn't change. The other counties generally decreased considerably in concentration and there are two counties in the middle decreased dramatically in concentration, only 0.16 and 0.27 times of that in Previous years. 
+
+In conclusion, I don't think the wildfire increase the concentration of SO2 because in the counties around where the wildfire in 2018 happened the concentration didn't increase significantly, and the average concentration of SO2 in the whole state decreased in 2018 
+```{r}
+data_s %>%
+  ggplot(aes(x=year,y=monitor_concentration))+
+  geom_boxplot()+
+  labs(title="Difference of concentration of SO2 in Previous years and 2018", y="Concentration of SO2")
+```
+
+```{r}
+data_s1 <- data_s %>%
+  group_by(Date,year) %>%
+  summarise(monitor_concentration:=mean(monitor_concentration,na.rm=TRUE))
+data_s1 %>%
+  ggplot(aes(y=monitor_concentration,x=Date,group=year,color=as.factor(year)))+
+  geom_line()+
+  labs(title="Difference of concentration of SO2 in Previous years and 2018", y="Concentration of SO2")
+```
+
+```{r}
+data_s1<-data_s %>%
+  group_by(county,year) %>%
+  summarise(monitor_concentration=mean(monitor_concentration,na.rm=TRUE),
+            latitude=mean(latitude,na.rm=TRUE),
+            longitude=mean(longitude,na.rm=TRUE))
+data_s1<-data.table(data_s1)
+data_s2<-data_s1[year=="Previous years"]
+data_s3<-data_s1[year=="2018"]
+data_sx<-merge(x=data_s2,y=data_s3,
+           by.x="county", by.y="county",
+           all.x=TRUE,all.y=TRUE)
+data_sx[,times:=monitor_concentration.y/monitor_concentration.x]
+time.pal = colorNumeric(c('darkgreen','goldenrod','brown'), domain=data_sx$times)
+leaflet(data_sx) %>% 
+    addProviderTiles('CartoDB.Positron') %>% 
+    addCircles(lat=~latitude.x, lng=~longitude.x, label=~paste0(round(times,2), ' times'), color=~time.pal(times),
+             opacity=1, fillOpacity=1, radius=5000) %>%
+    addLegend('bottomleft', pal=time.pal, values=data_sx$times,
+            title='Times', opacity=1)
+```
+
+#Evaluate the change in CO
+
+We use box-plot and line chart to check whether the concentration of CO in 2018 increased from Previous years. The average concentration in 2018 is higher. The distribution of the concentration is very weird so we can't get a lot of important massages from the box-plot. In the line chart We find that the average concentrations in 2018 is higher, and the fluctuation in Previous years was significantly greater.
+
+Then we check how many times did the average concentration in every county increase. We find that in the north part of CA where the wildfire happened the concentration almost didn't change and only in some places around LA the concentration increased, but there are still some places near LA where the concentration decreased in 2018.
+
+In conclusion, I don't think the wildfire increase the concentration of CO because in the counties around where the wildfire in 2018 happened the concentration didn't increase significantly, even though the average concentration of CO in the whole state increased in 2018 
+
+```{r}
+summary(data_c[year=="2018"]$monitor_concentration)
+summary(data_c[year=="Previous years"]$monitor_concentration)
+
+data_c %>%
+  ggplot(aes(x=year,y=monitor_concentration))+
+  geom_boxplot()+
+  labs(title="Difference of concentration of CO in Previous years and 2018", y="Concentration of CO")
+```
+
+```{r}
+data_c1 <- data_c %>%
+  group_by(Date,year) %>%
+  summarise(monitor_concentration:=mean(monitor_concentration,na.rm=TRUE))
+data_c1 %>%
+  ggplot(aes(y=monitor_concentration,x=Date,group=year,color=as.factor(year)))+
+  geom_line()+
+  labs(title="Difference of concentration of CO in Previous years and 2018", y="Concentration of CO")
+```
+
+```{r}
+data_c1<-data_c %>%
+  group_by(county,year) %>%
+  summarise(monitor_concentration=mean(monitor_concentration,na.rm=TRUE),
+            latitude=mean(latitude,na.rm=TRUE),
+            longitude=mean(longitude,na.rm=TRUE))
+data_c1<-data.table(data_c1)
+data_c2<-data_c1[year=="Previous years"]
+data_c3<-data_c1[year=="2018"]
+data_cx<-merge(x=data_c2,y=data_c3,
+           by.x="county", by.y="county",
+           all.x=TRUE,all.y=TRUE)
+data_cx[,times:=monitor_concentration.y/monitor_concentration.x]
+time.pal = colorNumeric(c('darkgreen','goldenrod','brown'), domain=data_cx$times)
+leaflet(data_cx) %>% 
+    addProviderTiles('CartoDB.Positron') %>% 
+    addCircles(lat=~latitude.x, lng=~longitude.x, label=~paste0(round(times,2), ' times'), color=~time.pal(times),
+             opacity=1, fillOpacity=1, radius=5000) %>%
+    addLegend('bottomleft', pal=time.pal, values=data_cx$times,
+            title='Times', opacity=1)
+```
+
+##Inquire the pollutants in NCBI database
+
+I inquire the Carbon monoxide and Sulfur dioxide in NCBI database and extract the abstracts of the papers that was about the pollutants. Then I checked the frequent words in the abstracts so that I can find something related to them. I planned to analyse information on wikibedia but I couldn't connect to it from R because I'm in China.
+
+For Carbon monoxide, most of the most freuent words aren't important, except "tobacco", maybe this implies that burning tobacco produces carbon monoxide.
+
+For sulfur dioxide, most of the most freuent words aren't important, except "nitrogen","fuel","oxidation", maybe this implies that much of SO2 come from burning the fuel and other oxidation process. And perhaps oxynitride is usually produced along with SO2, or they have similiar harmful influence so they are usually discussed together.
+
+I planned to analyse information on wikibedia to find more meaningful frequent words but I couldn't connect to it from R because I'm in China.
+
+#Carbon monoxide
+```{r}
+query_ids <- GET(
+  url   = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+  query = list(
+    db= "pubmed",
+    term= "Carbon monoxide California",
+    retmax= 1000)
+)
+
+ids <- httr::content(query_ids)
+ids <- as.character(ids)
+
+ids <- stringr::str_extract_all(ids, "<Id>[1-9]+</Id>")[[1]]
+
+
+ids <- stringr::str_remove_all(ids, "<Id>")
+ids <- stringr::str_remove_all(ids, "</Id>")
+ids<-head(ids,100)
+abst <- GET(
+  url   = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
+  query = list(
+    db = "pubmed",
+    id = paste(ids, collapse = ","),
+    retmax = 1000,
+    rettype = "abstract"
+    )
+)
+
+# Turning the output into character vector
+abst <- httr::content(abst)
+abst <- as.character(abst)
+
+abst1 <- stringr::str_extract_all(abst, "(?<=<AbstractText>)(.+)?(?=</AbstractText>)")[[1]]
+```
+
+```{r}
+abst1<-str_replace_all(abst1,"[0-9]+","")
+abst1<-str_replace_all(abst1,"carbon","")
+abst1<-str_replace_all(abst1,"monoxide","")
+abst2<-tibble(text=abst1)
+abst2 %>%
+  unnest_tokens(token, text) %>%
+  anti_join(stop_words, by = c("token" = "word")) %>%
+  count(token, sort = TRUE) %>%
+  top_n(n=20,wt=n) %>%
+  mutate(token = reorder(token, n)) %>%
+  ggplot(aes(y=token,x=n)) +
+  geom_col()
+
+
+```
+
+#Sulfur dioxide
+```{r}
+query_ids2 <- GET(
+  url   = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+  query = list(
+    db= "pubmed",
+    term= "Sulfur dioxide California",
+    retmax= 1000)
+)
+
+ids2 <- httr::content(query_ids2)
+ids2 <- as.character(ids2)
+
+ids2 <- stringr::str_extract_all(ids2, "<Id>[1-9]+</Id>")[[1]]
+
+
+ids2 <- stringr::str_remove_all(ids2, "<Id>")
+ids2 <- stringr::str_remove_all(ids2, "</Id>")
+ids2<-head(ids2,100)
+absts <- GET(
+  url   = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
+  query = list(
+    db = "pubmed",
+    id = paste(ids2, collapse = ","),
+    retmax = 1000,
+    rettype = "abstract"
+    )
+)
+
+# Turning the output into character vector
+absts <- httr::content(absts)
+absts <- as.character(absts)
+
+absts1 <- stringr::str_extract_all(absts, "(?<=<AbstractText>)(.+)?(?=</AbstractText>)")[[1]]
+```
+
+```{r}
+absts1<-str_replace_all(absts1,"[0-9]+","")
+absts1<-str_replace_all(absts1,"sulfur","")
+absts1<-str_replace_all(absts1,"dioxide","")
+absts2<-tibble(text=absts1)
+absts2 %>%
+  unnest_tokens(token, text) %>%
+  anti_join(stop_words, by = c("token" = "word")) %>%
+  count(token, sort = TRUE) %>%
+  top_n(n=20,wt=n) %>%
+  mutate(token = reorder(token, n)) %>%
+  ggplot(aes(y=token,x=n)) +
+  geom_col()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
